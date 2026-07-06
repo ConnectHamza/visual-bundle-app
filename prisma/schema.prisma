@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Bundle {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  // Temporary fields used by the current form
+  discountType  String @default("PERCENTAGE")
+  discountValue Float
+
+  status    String  @default("draft")
+  heroImage String?
+  shop      String
+
+  discountTiers DiscountTier[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shop])
+}
+
+model DiscountTier {
+  id              String @id @default(cuid())
+  bundleId        String
+  minimumQuantity Int
+  discountType    String @default("PERCENTAGE")
+  discountValue   Float
+
+  bundle Bundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bundleId, minimumQuantity])
+  @@index([bundleId])
+}
