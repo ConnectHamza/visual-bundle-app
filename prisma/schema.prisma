@@ -41,6 +41,7 @@ model Bundle {
   shop      String
 
   discountTiers DiscountTier[]
+  bundleItems   BundleItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -62,4 +63,25 @@ model DiscountTier {
 
   @@unique([bundleId, minimumQuantity])
   @@index([bundleId])
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  productId String
+  variantId String?
+  title     String
+  handle    String?
+  imageUrl  String?
+  position  Int     @default(0)
+
+  bundle Bundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bundleId, productId])
+  @@index([bundleId])
+  @@index([productId])
+  @@index([variantId])
 }

@@ -1,5 +1,13 @@
+import type { LinksFunction } from "react-router";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import "@shopify/polaris/build/esm/styles.css";
+import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+
+export const links: LinksFunction = () => [
+  {
+    rel: "stylesheet",
+    href: polarisStyles,
+  },
+];
 
 export default function App() {
   return (

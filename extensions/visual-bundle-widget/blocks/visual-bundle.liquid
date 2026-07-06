@@ -1,0 +1,20 @@
+{% assign product_gid = 'gid://shopify/Product/' | append: product.id %}
+
+<div
+  class="visual-bundle-widget"
+  data-visual-bundle
+  data-product-id="{{ product_gid }}"
+  data-shop="{{ shop.permanent_domain }}"
+>
+  <div class="visual-bundle-widget__loading">Loading bundles...</div>
+</div>
+
+{% schema %}
+{
+  "name": "Visual bundle",
+  "target": "section",
+  "stylesheet": "visual-bundle.css",
+  "javascript": "visual-bundle.js",
+  "settings": []
+}
+{% endschema %}

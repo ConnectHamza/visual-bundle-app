@@ -23,6 +23,7 @@ import {
   InlineStack,
   InlineError,
 } from "@shopify/polaris";
+import { useAppBridge, type Product } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
@@ -30,12 +31,67 @@ import { db } from "../db.server";
 type ActionDataResponse = {
   errors?: {
     title?: string;
+    products?: string;
     tier2?: string;
     tier3?: string;
     tier4?: string;
     server?: string;
   };
 };
+
+type SelectedProduct = {
+  productId: string;
+  variantId?: string;
+  title: string;
+  handle?: string;
+  imageUrl?: string;
+};
+
+function isSelectedProduct(value: unknown): value is SelectedProduct {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const product = value as Record<string, unknown>;
+
+  return (
+    typeof product.productId === "string" &&
+    product.productId.length > 0 &&
+    typeof product.title === "string" &&
+    product.title.length > 0 &&
+    (product.variantId === undefined || typeof product.variantId === "string") &&
+    (product.handle === undefined || typeof product.handle === "string") &&
+    (product.imageUrl === undefined || typeof product.imageUrl === "string")
+  );
+}
+
+function parseSelectedProducts(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || value.length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(isSelectedProduct);
+  } catch {
+    return [];
+  }
+}
+
+function productFromPicker(product: Product): SelectedProduct {
+  return {
+    productId: product.id,
+    variantId: product.variants[0]?.id,
+    title: product.title,
+    handle: product.handle || undefined,
+    imageUrl: product.images[0]?.originalSrc,
+  };
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   await authenticate.admin(request);
@@ -52,11 +108,16 @@ export async function action({ request }: ActionFunctionArgs) {
   const tier2 = Number(formData.get("tier2"));
   const tier3 = Number(formData.get("tier3"));
   const tier4 = Number(formData.get("tier4"));
+  const selectedProducts = parseSelectedProducts(formData.get("products"));
 
   const errors: NonNullable<ActionDataResponse["errors"]> = {};
 
   if (!title) {
     errors.title = "Bundle title is required.";
+  }
+
+  if (selectedProducts.length === 0) {
+    errors.products = "Select at least one product for this bundle.";
   }
 
   if (!Number.isFinite(tier2) || tier2 <= 0 || tier2 >= 100) {
@@ -110,6 +171,17 @@ export async function action({ request }: ActionFunctionArgs) {
             },
           ],
         },
+
+        bundleItems: {
+          create: selectedProducts.map((product, index) => ({
+            productId: product.productId,
+            variantId: product.variantId,
+            title: product.title,
+            handle: product.handle,
+            imageUrl: product.imageUrl,
+            position: index,
+          })),
+        },
       },
     });
 
@@ -129,16 +201,39 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function CreateBundle() {
+  const shopify = useAppBridge();
   const actionData = useActionData<ActionDataResponse>();
   const navigation = useNavigation();
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
+  const [products, setProducts] = useState<SelectedProduct[]>([]);
   const [tier2, setTier2] = useState("10");
   const [tier3, setTier3] = useState("15");
   const [tier4, setTier4] = useState("20");
 
   const isSubmitting = navigation.state === "submitting";
+
+  async function selectProducts() {
+    const selection = await shopify.resourcePicker({
+      type: "product",
+      action: "select",
+      multiple: true,
+      filter: {
+        hidden: false,
+        variants: false,
+      },
+      selectionIds: products.map((product) => ({
+        id: product.productId,
+      })),
+    });
+
+    if (!selection) {
+      return;
+    }
+
+    setProducts(selection.selection.map(productFromPicker));
+  }
 
   return (
     <Page
@@ -168,6 +263,66 @@ export default function CreateBundle() {
                     placeholder="Example: Summer Complete the Look"
                     error={actionData?.errors?.title}
                   />
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="h2" variant="headingMd">
+                      Products
+                    </Text>
+
+                    <Button onClick={selectProducts}>
+                      {products.length > 0 ? "Edit products" : "Select products"}
+                    </Button>
+                  </InlineStack>
+
+                  <input
+                    type="hidden"
+                    name="products"
+                    value={JSON.stringify(products)}
+                  />
+
+                  {actionData?.errors?.products ? (
+                    <InlineError
+                      message={actionData.errors.products}
+                      fieldID="bundle-products-error"
+                    />
+                  ) : null}
+
+                  {products.length === 0 ? (
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      No products selected.
+                    </Text>
+                  ) : (
+                    <BlockStack gap="300">
+                      {products.map((product) => (
+                        <InlineStack
+                          key={product.productId}
+                          gap="300"
+                          blockAlign="center"
+                        >
+                          {product.imageUrl ? (
+                            <img
+                              src={product.imageUrl}
+                              alt=""
+                              style={{
+                                width: "48px",
+                                height: "48px",
+                                borderRadius: "6px",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : null}
+
+                          <Text as="span" variant="bodyMd">
+                            {product.title}
+                          </Text>
+                        </InlineStack>
+                      ))}
+                    </BlockStack>
+                  )}
                 </BlockStack>
               </Card>
 

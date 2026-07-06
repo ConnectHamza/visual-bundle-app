@@ -19,6 +19,14 @@ type DiscountTierData = {
   discountValue: number;
 };
 
+type BundleItemData = {
+  id: string;
+  productId: string;
+  title: string;
+  handle: string | null;
+  imageUrl: string | null;
+};
+
 type BundleDetailsData = {
   bundle: {
     id: string;
@@ -26,6 +34,7 @@ type BundleDetailsData = {
     description: string | null;
     status: string;
     discountTiers: DiscountTierData[];
+    bundleItems: BundleItemData[];
   };
 };
 
@@ -55,6 +64,11 @@ export async function loader({
           minimumQuantity: "asc",
         },
       },
+      bundleItems: {
+        orderBy: {
+          position: "asc",
+        },
+      },
     },
   });
 
@@ -74,6 +88,13 @@ export async function loader({
         id: tier.id,
         minimumQuantity: tier.minimumQuantity,
         discountValue: tier.discountValue,
+      })),
+      bundleItems: bundle.bundleItems.map((item: BundleItemData) => ({
+        id: item.id,
+        productId: item.productId,
+        title: item.title,
+        handle: item.handle,
+        imageUrl: item.imageUrl,
       })),
     },
   };
@@ -139,11 +160,60 @@ export default function BundleDetails() {
                       }}
                     >
                       <Text as="p" variant="bodyMd">
-                        Select {tier.minimumQuantity} items —{" "}
+                        Select {tier.minimumQuantity} items -{" "}
                         {tier.discountValue}% off
                       </Text>
                     </div>
                   ))
+                )}
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Products
+                </Text>
+
+                {bundle.bundleItems.length === 0 ? (
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    No products selected.
+                  </Text>
+                ) : (
+                  <BlockStack gap="300">
+                    {bundle.bundleItems.map((item) => (
+                      <InlineStack
+                        key={item.id}
+                        gap="300"
+                        blockAlign="center"
+                      >
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt=""
+                            style={{
+                              width: "48px",
+                              height: "48px",
+                              borderRadius: "6px",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : null}
+
+                        <BlockStack gap="100">
+                          <Text as="span" variant="bodyMd">
+                            {item.title}
+                          </Text>
+
+                          {item.handle ? (
+                            <Text as="span" variant="bodySm" tone="subdued">
+                              /products/{item.handle}
+                            </Text>
+                          ) : null}
+                        </BlockStack>
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
                 )}
               </BlockStack>
             </Card>
