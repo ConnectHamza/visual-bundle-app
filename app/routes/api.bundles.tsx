@@ -8,6 +8,14 @@ type BundleResponse = {
     id: string;
     title: string;
     status: string;
+    bundleType: string;
+    layoutStyle: string;
+    accentColor: string;
+    buttonText: string;
+    volumeScope: string;
+    minimumSelections: number;
+    maximumSelections: number | null;
+    fbtDiscountValue: number | null;
     products: {
       id: string;
       productId: string;
@@ -20,6 +28,32 @@ type BundleResponse = {
       minimumQuantity: number;
       discountValue: number;
     }[];
+  }[];
+};
+
+type BundleQueryResult = {
+  id: string;
+  title: string;
+  status: string;
+  bundleType: string;
+  layoutStyle: string;
+  accentColor: string;
+  buttonText: string;
+  volumeScope: string;
+  minimumSelections: number;
+  maximumSelections: number | null;
+  fbtDiscountValue: number | null;
+  bundleItems: {
+    id: string;
+    productId: string;
+    variantId: string | null;
+    title: string;
+    handle: string | null;
+    imageUrl: string | null;
+  }[];
+  discountTiers: {
+    minimumQuantity: number;
+    discountValue: number;
   }[];
 };
 
@@ -41,9 +75,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     );
   }
 
-  const bundles = await db.bundle.findMany({
+  const bundles = (await db.bundle.findMany({
     where: {
       shop,
+      status: "active",
       bundleItems: {
         some: {
           productId,
@@ -65,7 +100,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     orderBy: {
       createdAt: "desc",
     },
-  });
+  })) as BundleQueryResult[];
 
   return data<BundleResponse>(
     {
@@ -73,7 +108,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
         id: bundle.id,
         title: bundle.title,
         status: bundle.status,
-        products: bundle.bundleItems.map((item) => ({
+        bundleType: bundle.bundleType,
+        layoutStyle: bundle.layoutStyle,
+        accentColor: bundle.accentColor,
+        buttonText: bundle.buttonText,
+        volumeScope: bundle.volumeScope,
+        minimumSelections: bundle.minimumSelections,
+        maximumSelections: bundle.maximumSelections,
+        fbtDiscountValue: bundle.fbtDiscountValue,
+        products: (
+          bundle.bundleType === "quantity_breaks" ||
+          bundle.bundleType === "volume_discount"
+            ? bundle.bundleItems.filter((item) => item.productId === productId)
+            : bundle.bundleItems
+        ).map((item) => ({
           id: item.id,
           productId: item.productId,
           variantId: item.variantId,

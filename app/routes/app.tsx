@@ -1,4 +1,8 @@
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
+import type {
+  HeadersArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
 import { Outlet, useLoaderData } from "react-router";
 import { NavMenu } from "@shopify/app-bridge-react";
 import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
@@ -32,6 +36,6 @@ export default function App() {
   );
 }
 
-export const headers: HeadersFunction = (headersArgs) => {
+export const headers: HeadersFunction = (headersArgs: HeadersArgs) => {
   return boundary.headers(headersArgs);
 };

@@ -1,0 +1,4 @@
+ALTER TABLE "Bundle" ADD COLUMN "bundleType" TEXT NOT NULL DEFAULT 'classic';
+ALTER TABLE "Bundle" ADD COLUMN "layoutStyle" TEXT NOT NULL DEFAULT 'list';
+ALTER TABLE "Bundle" ADD COLUMN "accentColor" TEXT NOT NULL DEFAULT '#008060';
+ALTER TABLE "Bundle" ADD COLUMN "buttonText" TEXT NOT NULL DEFAULT 'Add bundle';

@@ -1,0 +1,19 @@
+query RunInput {
+  cart {
+    lines {
+      id
+      quantity
+      bundleId: attribute(key: "_visual_bundle_id") {
+        value
+      }
+      bundleTiers: attribute(key: "_visual_bundle_tiers") {
+        value
+      }
+    }
+  }
+  discountNode {
+    metafield(namespace: "$app:visual-bundle-discount", key: "function-configuration") {
+      value
+    }
+  }
+}

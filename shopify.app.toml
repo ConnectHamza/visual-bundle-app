@@ -2,7 +2,7 @@
 
 client_id = "f413fb18d452a3e02bb3e307102c052f"
 name = "visual-bundle-app"
-application_url = "https://sacramento-residential-transparent-saints.trycloudflare.com"
+application_url = "https://air-pam-don-screen.trycloudflare.com"
 embedded = true
 
 [build]
@@ -21,19 +21,17 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_metaobject_definitions,write_metaobjects,write_products"
+scopes = "read_discounts,write_discounts,write_metaobject_definitions,write_metaobjects,write_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [
-  "https://sacramento-residential-transparent-saints.trycloudflare.com/auth/callback"
-]
+redirect_urls = [ "https://air-pam-don-screen.trycloudflare.com/auth/callback" ]
 
 [app_proxy]
-url = "https://sacramento-residential-transparent-saints.trycloudflare.com/api/bundles"
-prefix = "apps"
+url = "/api/bundles"
 subpath = "visual-bundles"
+prefix = "apps"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"

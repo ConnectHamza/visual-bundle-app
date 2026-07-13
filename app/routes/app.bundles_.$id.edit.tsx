@@ -3,31 +3,32 @@ import type {
   ActionFunctionArgs,
   LoaderFunctionArgs,
 } from "react-router";
-
 import {
   data,
   Form,
+  redirect,
   useActionData,
+  useLoaderData,
   useNavigate,
   useNavigation,
 } from "react-router";
 
+import { useAppBridge, type Product } from "@shopify/app-bridge-react";
 import {
-  Page,
-  Layout,
+  BlockStack,
+  Button,
   Card,
+  InlineError,
+  InlineStack,
+  Layout,
+  Page,
+  Select,
   Text,
   TextField,
-  Button,
-  BlockStack,
-  InlineStack,
-  InlineError,
-  Select,
 } from "@shopify/polaris";
-import { useAppBridge, type Product } from "@shopify/app-bridge-react";
 
-import { authenticate } from "../shopify.server";
 import { db } from "../db.server";
+import { authenticate } from "../shopify.server";
 import { BundlePreview } from "../components/BundlePreview";
 import { BundleTypeGuide } from "../components/BundleTypeGuide";
 import { BundleTypeSettings } from "../components/BundleTypeSettings";
@@ -40,12 +41,36 @@ import {
   supportedBundleTypeValues,
 } from "../lib/bundleTypes";
 import {
-  defaultDiscountTiers,
   maxDiscountValue,
   parseDiscountTiers,
   validateDiscountTiers,
 } from "../lib/discountTiers";
 import type { DiscountTierInput } from "../lib/discountTiers";
+
+type SelectedProduct = {
+  productId: string;
+  variantId?: string;
+  title: string;
+  handle?: string;
+  imageUrl?: string;
+};
+
+type EditBundleLoaderData = {
+  bundle: {
+    id: string;
+    title: string;
+    bundleType: string;
+    layoutStyle: string;
+    accentColor: string;
+    buttonText: string;
+    volumeScope: string;
+    minimumSelections: string;
+    maximumSelections: string;
+    fbtDiscountValue: string;
+    products: SelectedProduct[];
+    tiers: DiscountTierInput[];
+  };
+};
 
 type ActionDataResponse = {
   errors?: {
@@ -57,14 +82,6 @@ type ActionDataResponse = {
     typeSettings?: string;
     server?: string;
   };
-};
-
-type SelectedProduct = {
-  productId: string;
-  variantId?: string;
-  title: string;
-  handle?: string;
-  imageUrl?: string;
 };
 
 function allowedValue(value: FormDataEntryValue | null, allowed: string[]) {
@@ -79,6 +96,17 @@ function validHexColor(value: string) {
 
 function validDiscountPercent(value: number) {
   return Number.isFinite(value) && value > 0 && value < 100;
+}
+
+function bundleIdFromRequest(request: Request, params: LoaderFunctionArgs["params"]) {
+  if (params.id) {
+    return params.id;
+  }
+
+  const pathname = new URL(request.url).pathname;
+  const match = pathname.match(/\/app\/bundles\/([^/]+)\/edit/);
+
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function isSelectedProduct(value: unknown): value is SelectedProduct {
@@ -127,59 +155,27 @@ function productFromPicker(product: Product): SelectedProduct {
   };
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
-
-  return {};
-}
-
-export async function action({ request }: ActionFunctionArgs) {
-  const { session, redirect } = await authenticate.admin(request);
-
-  const formData = await request.formData();
-
-  const title = String(formData.get("title") || "").trim();
-  const bundleType = allowedValue(
-    formData.get("bundleType"),
-    supportedBundleTypeValues(),
-  );
-  const selectedBundleType = bundleTypeFor(bundleType);
-  const layoutStyle = allowedValue(
-    formData.get("layoutStyle"),
-    layoutOptionsForBundleType(bundleType).map((option) => option.value),
-  );
-  const accentColor = String(formData.get("accentColor") || "#008060").trim();
-  const buttonText = String(formData.get("buttonText") || "Add bundle").trim();
-  const volumeScope = allowedValue(formData.get("volumeScope"), [
-    "single",
-    "multiple",
-  ]);
-  const minimumSelections = Number(formData.get("minimumSelections") || "2");
-  const maximumSelectionsRaw = String(formData.get("maximumSelections") || "");
-  const maximumSelections =
-    maximumSelectionsRaw.trim().length > 0 ? Number(maximumSelectionsRaw) : null;
-  const fbtDiscountValue = Number(formData.get("fbtDiscountValue") || "10");
-  const selectedProducts = parseSelectedProducts(formData.get("products"));
-  const discountTiers =
-    selectedBundleType.value === "frequently_bought_together" ||
-    selectedBundleType.value === "cross_sell"
-      ? [
-          {
-            id: "fbt-tier",
-            minimumQuantity: "2",
-            discountValue: String(fbtDiscountValue),
-          },
-        ]
-      : parseDiscountTiers(formData.get("tiers"));
+function validateBundleForm(
+  title: string,
+  bundleType: string,
+  selectedProducts: SelectedProduct[],
+  accentColor: string,
+  buttonText: string,
+  discountTiers: DiscountTierInput[],
+  volumeScope: string,
+  minimumSelections: number,
+  maximumSelections: number | null,
+  fbtDiscountValue: number,
+) {
+  const errors: NonNullable<ActionDataResponse["errors"]> = {};
   const tierValidation = validateDiscountTiers(discountTiers);
+  const selectedBundleType = bundleTypeFor(bundleType);
   const effectiveProductMode =
     selectedBundleType.value === "volume_discount"
       ? "multiple"
       : selectedBundleType.productMode;
   const minimumProducts =
     effectiveProductMode === "single" ? 1 : selectedBundleType.minimumProducts;
-
-  const errors: NonNullable<ActionDataResponse["errors"]> = {};
 
   if (!title) {
     errors.title = "Bundle title is required.";
@@ -239,65 +235,223 @@ export async function action({ request }: ActionFunctionArgs) {
     errors.tiers = tierValidation.errors.tiers;
   }
 
-  if (Object.keys(errors).length > 0) {
+  return {
+    errors,
+    normalizedTiers: tierValidation.normalizedTiers,
+  };
+}
+
+export async function loader({
+  request,
+  params,
+}: LoaderFunctionArgs): Promise<EditBundleLoaderData> {
+  const { session } = await authenticate.admin(request);
+  const bundleId = bundleIdFromRequest(request, params);
+
+  if (!bundleId) {
+    throw new Response("Bundle ID is missing.", {
+      status: 400,
+    });
+  }
+
+  const bundle = await db.bundle.findFirst({
+    where: {
+      id: bundleId,
+      shop: session.shop,
+    },
+    include: {
+      bundleItems: {
+        orderBy: {
+          position: "asc",
+        },
+      },
+      discountTiers: {
+        orderBy: {
+          minimumQuantity: "asc",
+        },
+      },
+    },
+  });
+
+  if (!bundle) {
+    throw new Response("Bundle not found.", {
+      status: 404,
+    });
+  }
+
+  return {
+    bundle: {
+      id: bundle.id,
+      title: bundle.title,
+      bundleType: bundle.bundleType,
+      layoutStyle: bundle.layoutStyle,
+      accentColor: bundle.accentColor,
+      buttonText: bundle.buttonText,
+      volumeScope: bundle.volumeScope,
+      minimumSelections: String(bundle.minimumSelections),
+      maximumSelections:
+        bundle.maximumSelections === null ? "" : String(bundle.maximumSelections),
+      fbtDiscountValue:
+        bundle.fbtDiscountValue === null ? "10" : String(bundle.fbtDiscountValue),
+      products: bundle.bundleItems.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId || undefined,
+        title: item.title,
+        handle: item.handle || undefined,
+        imageUrl: item.imageUrl || undefined,
+      })),
+      tiers: bundle.discountTiers.map((tier) => ({
+        id: tier.id,
+        minimumQuantity: String(tier.minimumQuantity),
+        discountValue: String(tier.discountValue),
+      })),
+    },
+  };
+}
+
+export async function action({
+  request,
+  params,
+}: ActionFunctionArgs) {
+  const { session } = await authenticate.admin(request);
+  const bundleId = bundleIdFromRequest(request, params);
+
+  if (!bundleId) {
+    throw new Response("Bundle ID is missing.", {
+      status: 400,
+    });
+  }
+
+  const formData = await request.formData();
+  const title = String(formData.get("title") || "").trim();
+  const bundleType = allowedValue(
+    formData.get("bundleType"),
+    supportedBundleTypeValues(),
+  );
+  const layoutStyle = allowedValue(
+    formData.get("layoutStyle"),
+    layoutOptionsForBundleType(bundleType).map((option) => option.value),
+  );
+  const accentColor = String(formData.get("accentColor") || "#008060").trim();
+  const buttonText = String(formData.get("buttonText") || "Add bundle").trim();
+  const selectedBundleType = bundleTypeFor(bundleType);
+  const volumeScope = allowedValue(formData.get("volumeScope"), [
+    "single",
+    "multiple",
+  ]);
+  const minimumSelections = Number(formData.get("minimumSelections") || "2");
+  const maximumSelectionsRaw = String(formData.get("maximumSelections") || "");
+  const maximumSelections =
+    maximumSelectionsRaw.trim().length > 0 ? Number(maximumSelectionsRaw) : null;
+  const fbtDiscountValue = Number(formData.get("fbtDiscountValue") || "10");
+  const selectedProducts = parseSelectedProducts(formData.get("products"));
+  const discountTiers =
+    selectedBundleType.value === "frequently_bought_together" ||
+    selectedBundleType.value === "cross_sell"
+      ? [
+          {
+            id: "fbt-tier",
+            minimumQuantity: "2",
+            discountValue: String(fbtDiscountValue),
+          },
+        ]
+      : parseDiscountTiers(formData.get("tiers"));
+  const validation = validateBundleForm(
+    title,
+    bundleType,
+    selectedProducts,
+    accentColor,
+    buttonText,
+    discountTiers,
+    volumeScope,
+    minimumSelections,
+    maximumSelections,
+    fbtDiscountValue,
+  );
+
+  if (Object.keys(validation.errors).length > 0) {
     return data<ActionDataResponse>(
-      { errors },
+      { errors: validation.errors },
       { status: 400 },
     );
   }
 
-  try {
-    await db.bundle.create({
-      data: {
-        title,
-        shop: session.shop,
-        status: "active",
-        bundleType: selectedBundleType.value,
-        layoutStyle,
-        accentColor,
-        buttonText,
-        volumeScope,
-        minimumSelections,
-        maximumSelections,
-        fbtDiscountValue:
-          selectedBundleType.value === "frequently_bought_together" ||
-          selectedBundleType.value === "cross_sell"
-            ? fbtDiscountValue
-            : null,
+  const existingBundle = await db.bundle.findFirst({
+    where: {
+      id: bundleId,
+      shop: session.shop,
+    },
+    select: {
+      id: true,
+    },
+  });
 
-        // Temporary fields still used by the bundle list
-        discountType: "PERCENTAGE",
-        discountValue: maxDiscountValue(tierValidation.normalizedTiers),
-
-        discountTiers: {
-          create: tierValidation.normalizedTiers.map((tier) => ({
-              minimumQuantity: tier.minimumQuantity,
-              discountType: "PERCENTAGE",
-              discountValue: tier.discountValue,
-          })),
-        },
-
-        bundleItems: {
-          create: selectedProducts.map((product, index) => ({
-            productId: product.productId,
-            variantId: product.variantId,
-            title: product.title,
-            handle: product.handle,
-            imageUrl: product.imageUrl,
-            position: index,
-          })),
-        },
-      },
+  if (!existingBundle) {
+    throw new Response("Bundle not found.", {
+      status: 404,
     });
+  }
 
-    return redirect("/app/bundles?message=bundle-created");
+  try {
+    await db.$transaction([
+      db.discountTier.deleteMany({
+        where: {
+          bundleId,
+        },
+      }),
+      db.bundleItem.deleteMany({
+        where: {
+          bundleId,
+        },
+      }),
+      db.bundle.update({
+        where: {
+          id: bundleId,
+        },
+        data: {
+          title,
+          bundleType: bundleTypeFor(bundleType).value,
+          layoutStyle,
+          accentColor,
+          buttonText,
+          volumeScope,
+          minimumSelections,
+          maximumSelections,
+          fbtDiscountValue:
+            selectedBundleType.value === "frequently_bought_together" ||
+            selectedBundleType.value === "cross_sell"
+              ? fbtDiscountValue
+              : null,
+          discountValue: maxDiscountValue(validation.normalizedTiers),
+          discountTiers: {
+            create: validation.normalizedTiers.map((tier) => ({
+                minimumQuantity: tier.minimumQuantity,
+                discountType: "PERCENTAGE",
+                discountValue: tier.discountValue,
+            })),
+          },
+          bundleItems: {
+            create: selectedProducts.map((product, index) => ({
+              productId: product.productId,
+              variantId: product.variantId,
+              title: product.title,
+              handle: product.handle,
+              imageUrl: product.imageUrl,
+              position: index,
+            })),
+          },
+        },
+      }),
+    ]);
+
+    return redirect(`/app/bundles/${bundleId}?message=bundle-updated`);
   } catch (error) {
-    console.error("Failed to create bundle:", error);
+    console.error("Failed to update bundle:", error);
 
     return data<ActionDataResponse>(
       {
         errors: {
-          server: "The bundle could not be saved.",
+          server: "The bundle could not be updated.",
         },
       },
       { status: 500 },
@@ -305,26 +459,30 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-export default function CreateBundle() {
+export default function EditBundle() {
+  const { bundle } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const actionData = useActionData<ActionDataResponse>();
-  const navigation = useNavigation();
   const navigate = useNavigate();
+  const navigation = useNavigation();
 
-  const [title, setTitle] = useState("");
-  const [products, setProducts] = useState<SelectedProduct[]>([]);
-  const [tiers, setTiers] =
-    useState<DiscountTierInput[]>(defaultDiscountTiers);
-  const [bundleType, setBundleType] = useState("classic");
-  const [layoutStyle, setLayoutStyle] = useState(
-    layoutOptionsForBundleType("classic")[0].value,
+  const [title, setTitle] = useState(bundle.title);
+  const [bundleType, setBundleType] = useState(bundle.bundleType);
+  const [layoutStyle, setLayoutStyle] = useState(bundle.layoutStyle);
+  const [accentColor, setAccentColor] = useState(bundle.accentColor);
+  const [buttonText, setButtonText] = useState(bundle.buttonText);
+  const [volumeScope, setVolumeScope] = useState(bundle.volumeScope);
+  const [minimumSelections, setMinimumSelections] = useState(
+    bundle.minimumSelections,
   );
-  const [accentColor, setAccentColor] = useState("#008060");
-  const [buttonText, setButtonText] = useState("Add bundle");
-  const [volumeScope, setVolumeScope] = useState("single");
-  const [minimumSelections, setMinimumSelections] = useState("2");
-  const [maximumSelections, setMaximumSelections] = useState("");
-  const [fbtDiscountValue, setFbtDiscountValue] = useState("10");
+  const [maximumSelections, setMaximumSelections] = useState(
+    bundle.maximumSelections,
+  );
+  const [fbtDiscountValue, setFbtDiscountValue] = useState(
+    bundle.fbtDiscountValue,
+  );
+  const [products, setProducts] = useState<SelectedProduct[]>(bundle.products);
+  const [tiers, setTiers] = useState<DiscountTierInput[]>(bundle.tiers);
 
   const isSubmitting = navigation.state === "submitting";
   const selectedBundleType = bundleTypeFor(bundleType);
@@ -385,11 +543,10 @@ export default function CreateBundle() {
 
   return (
     <Page
-      title="Create Flexible Bundle"
-      subtitle="Customers unlock larger discounts by selecting more products."
+      title="Edit bundle"
       backAction={{
-        content: "Bundles",
-        onAction: () => navigate("/app/bundles"),
+        content: "Bundle details",
+        onAction: () => navigate(`/app/bundles/${bundle.id}`),
       }}
     >
       <Layout>
@@ -408,7 +565,6 @@ export default function CreateBundle() {
                     value={title}
                     onChange={setTitle}
                     autoComplete="off"
-                    placeholder="Example: Summer Complete the Look"
                     error={actionData?.errors?.title}
                   />
                 </BlockStack>
@@ -613,14 +769,21 @@ export default function CreateBundle() {
                 </BlockStack>
               </Card>
 
-              <InlineStack align="end">
+              <InlineStack align="end" gap="300">
+                <Button
+                  onClick={() => navigate(`/app/bundles/${bundle.id}`)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+
                 <Button
                   submit
                   variant="primary"
                   loading={isSubmitting}
                   disabled={isSubmitting}
                 >
-                  Save Bundle
+                  Save changes
                 </Button>
               </InlineStack>
             </BlockStack>

@@ -39,6 +39,14 @@ model Bundle {
   status    String  @default("draft")
   heroImage String?
   shop      String
+  bundleType String @default("classic")
+  layoutStyle String @default("list")
+  accentColor String @default("#008060")
+  buttonText String @default("Add bundle")
+  volumeScope String @default("single")
+  minimumSelections Int @default(2)
+  maximumSelections Int?
+  fbtDiscountValue Float?
 
   discountTiers DiscountTier[]
   bundleItems   BundleItem[]

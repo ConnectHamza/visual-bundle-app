@@ -1,0 +1,75 @@
+{
+  "payload": {
+    "export": "run",
+    "target": "purchase.product-discount.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 1,
+            "bundleId": {
+              "value": "bundle-1"
+            },
+            "bundleTiers": {
+              "value": "[{\"minimumQuantity\":2,\"discountValue\":8},{\"minimumQuantity\":3,\"discountValue\":12},{\"minimumQuantity\":4,\"discountValue\":18}]"
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "quantity": 1,
+            "bundleId": {
+              "value": "bundle-1"
+            },
+            "bundleTiers": {
+              "value": "[{\"minimumQuantity\":2,\"discountValue\":8},{\"minimumQuantity\":3,\"discountValue\":12},{\"minimumQuantity\":4,\"discountValue\":18}]"
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/3",
+            "quantity": 1,
+            "bundleId": {
+              "value": "bundle-1"
+            },
+            "bundleTiers": {
+              "value": "[{\"minimumQuantity\":2,\"discountValue\":8},{\"minimumQuantity\":3,\"discountValue\":12},{\"minimumQuantity\":4,\"discountValue\":18}]"
+            }
+          }
+        ]
+      },
+      "discountNode": {
+        "metafield": null
+      }
+    },
+    "output": {
+      "discountApplicationStrategy": "ALL",
+      "discounts": [
+        {
+          "message": "Bundle discount: save 12%",
+          "targets": [
+            {
+              "cartLine": {
+                "id": "gid://shopify/CartLine/1"
+              }
+            },
+            {
+              "cartLine": {
+                "id": "gid://shopify/CartLine/2"
+              }
+            },
+            {
+              "cartLine": {
+                "id": "gid://shopify/CartLine/3"
+              }
+            }
+          ],
+          "value": {
+            "percentage": {
+              "value": "12"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
